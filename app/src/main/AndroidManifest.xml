@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- أذونات قراءة ملفات الفيديو -->
+    <!-- لأجهزة أندرويد 13 فما فوق (API 33+) لقراءة مقاطع الفيديو فقط وفق مبدأ الحد الأدنى من الصلاحيات -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <!-- اختياري: لأجهزة أندرويد 13 فما فوق إذا كان المشغل يدعم أيضاً قراءة المسارات الصوتية المنفصلة أو وضع تشغيل الصوت -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <!-- لأجهزة أندرويد 12 والإصدارات الأقدم (API 32 فما دون)، محدد بـ maxSdkVersion لتجنب طلبه في أندرويد الحديث -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- إذن إبقاء الشاشة والمعالج في وضع النشاط لمنع إغلاق الشاشة أثناء تشغيل الفيديو -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- إذن تشغيل الخدمة في الواجهة الأمامية للتشغيل في الخلفية أو إشعار التحكم بالوسائط -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- مطلوب بدءاً من أندرويد 14 (API 34+) لتحديد نوع الخدمة في الخلفية كتشغيل وسائط (Media Playback) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!-- إذن إرسال الإشعارات في أندرويد 13+ لعرض إشعار التحكم بالمشغل (Media Notification) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- إذن الوصول للإنترنت لدعم تشغيل الفيديوهات والبث المباشر (HLS / DASH / MP4 عبر الإنترنت) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MyApplication">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.MyApplication"
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            
+            <!-- تمكين فتح الفيديوهات مباشرة من مدير الملفات أو التطبيقات الأخرى بواسطة نوفا بلاير -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- خدمة التشغيل في الخلفية للوسائط وإشعارات شاشة القفل -->
+        <service
+            android:name=".player.NovaPlaybackService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+    </application>
+
+</manifest>

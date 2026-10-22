@@ -1,0 +1,85 @@
+name: Build Dokkani Android (APK & AAB)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'release/**'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # يتيح تشغيل البناء يدوياً من واجهة GitHub Actions في أي وقت
+
+# إيقاف أية عمليات بناء سابقة معلقة في طابور الانتظار وتجهيز الخادم فوراً لأحدث دفع
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+
+    steps:
+      # 1. استنساخ الكود المصدري للمستودع
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. إعداد بيئة جافا (JDK 17) المتوافقة مع أحدث حزم أندرويد
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 3. تجهيز مفتاح التوقيع (debug.keystore) لضمان اجتياز مهمة validateSigningDebug
+      - name: Prepare Debug Keystore
+        run: |
+          if [ -f "debug.keystore.base64" ]; then
+            base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || true
+          fi
+          if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
+            echo "Generating standard debug keystore for CI..."
+            keytool -genkey -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          echo "Debug keystore ready at $(pwd)/debug.keystore"
+
+      # 4. إعداد وتفعيل Gradle مع التخزين المؤقت التلقائي (Cache)
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # 5. التأكد من وجود أداة gradlew ومنحها صلاحيات التنفيذ
+      - name: Ensure Gradle Wrapper
+        run: |
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper
+          fi
+          chmod +x gradlew
+
+      # 6. بناء ملف الـ APK الجاهز للتثبيت الفوري مع تفادي تعارض خيوط KSP / AWT
+      - name: Build Android APK
+        env:
+          JAVA_OPTS: "-Djava.awt.headless=true -Dfile.encoding=UTF-8"
+          _JAVA_OPTIONS: "-Djava.awt.headless=true"
+        run: |
+          ./gradlew :app:assembleDebug --no-daemon --no-parallel -Djava.awt.headless=true -Dorg.gradle.parallel=false -Dksp.incremental=false --stacktrace
+
+      # 7. رفع وتخزين ملف الـ APK الناتج كأصل متاح للتحميل الفوري (Artifacts)
+      - name: Upload Dokkani APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nova-player
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+          if-no-files-found: error

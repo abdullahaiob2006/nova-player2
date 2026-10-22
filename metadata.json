@@ -1,0 +1,8 @@
+{
+  "name": "Nova Player",
+  "description": "مشغل فيديو احترافي متطور بتقنيات Jetpack Compose و Material 3 و Media3 ExoPlayer و Room Database",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
