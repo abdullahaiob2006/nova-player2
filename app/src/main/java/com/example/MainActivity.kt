@@ -49,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -173,6 +174,8 @@ fun NovaPlayerApp(
     var viewingFolder by remember { mutableStateOf<String?>(null) }
     var isVaultOpen by remember { mutableStateOf(false) }
     var activePlayingVideo by remember { mutableStateOf<VideoModel?>(null) }
+    var activePlayingPlaylist by remember { mutableStateOf<List<VideoModel>>(emptyList()) }
+    var currentPlayingIndex by remember { mutableIntStateOf(0) }
 
     val uiState by videoViewModel.uiState.collectAsState()
 
@@ -189,7 +192,13 @@ fun NovaPlayerApp(
 
         PlayerScreen(
             video = videoToPlay,
+            playlist = activePlayingPlaylist,
+            initialIndex = currentPlayingIndex,
             initialPosition = videoToPlay.lastPlayedPosition,
+            onVideoChanged = { newVideo ->
+                activePlayingVideo = newVideo
+                currentPlayingIndex = activePlayingPlaylist.indexOfFirst { it.id == newVideo.id }.coerceAtLeast(0)
+            },
             onBackClick = { lastPosition ->
                 scope.launch {
                     videoRepository.savePlaybackPosition(videoToPlay.id, lastPosition, videoToPlay.duration)
@@ -306,6 +315,8 @@ fun NovaPlayerApp(
                             vaultManager = vaultManager,
                             onBackClick = { isVaultOpen = false },
                             onPlayVideo = { video ->
+                                activePlayingPlaylist = listOf(video)
+                                currentPlayingIndex = 0
                                 activePlayingVideo = video
                             }
                         )
@@ -324,6 +335,8 @@ fun NovaPlayerApp(
                             isLoading = uiState.isLoading,
                             onBackClick = { viewingFolder = null },
                             onVideoClick = { video ->
+                                activePlayingPlaylist = folderVideos
+                                currentPlayingIndex = folderVideos.indexOfFirst { it.id == video.id }.coerceAtLeast(0)
                                 activePlayingVideo = video
                             }
                         )
@@ -339,6 +352,9 @@ fun NovaPlayerApp(
                                 viewingFolder = folderName
                             },
                             onVideoClick = { video ->
+                                val allVideos = uiState.videos
+                                activePlayingPlaylist = allVideos
+                                currentPlayingIndex = allVideos.indexOfFirst { it.id == video.id }.coerceAtLeast(0)
                                 activePlayingVideo = video
                             },
                             onPrivacyClick = {
@@ -356,6 +372,9 @@ fun NovaPlayerApp(
                             audios = audiosList,
                             isLoading = false,
                             onAudioClick = { audio ->
+                                val audioVideos = audiosList.map { it.toVideoModel() }
+                                activePlayingPlaylist = audioVideos
+                                currentPlayingIndex = audioVideos.indexOfFirst { it.id == audio.id }.coerceAtLeast(0)
                                 activePlayingVideo = audio.toVideoModel()
                             }
                         )

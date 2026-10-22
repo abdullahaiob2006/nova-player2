@@ -210,13 +210,33 @@ private enum class DragDirection {
 @Composable
 fun PlayerScreen(
     video: VideoModel,
+    playlist: List<VideoModel> = emptyList(),
+    initialIndex: Int = 0,
     initialPosition: Long = 0L,
+    onVideoChanged: ((VideoModel) -> Unit)? = null,
     onBackClick: (lastPosition: Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    // إدارة قائمة التشغيل والفهرس الحالي بدقة
+    val effectivePlaylist = remember(playlist, video) {
+        if (playlist.isNotEmpty()) playlist else listOf(video)
+    }
+    var currentIndex by remember(effectivePlaylist, initialIndex) {
+        mutableIntStateOf(
+            if (effectivePlaylist.isNotEmpty()) {
+                val foundIndex = effectivePlaylist.indexOfFirst { it.id == video.id }
+                if (foundIndex >= 0) foundIndex else initialIndex.coerceIn(0, effectivePlaylist.size - 1)
+            } else 0
+        )
+    }
+    var currentVideo by remember(currentIndex, effectivePlaylist) {
+        mutableStateOf(effectivePlaylist.getOrElse(currentIndex) { video })
+    }
+    var lastPreviousClickTime by remember { mutableLongStateOf(0L) }
 
     val audioManager = remember {
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -228,7 +248,7 @@ fun PlayerScreen(
     // تهيئة مشغل ExoPlayer
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(video.contentUri))
+            setMediaItem(MediaItem.fromUri(currentVideo.contentUri))
             prepare()
             if (initialPosition > 0) {
                 seekTo(initialPosition)
@@ -251,11 +271,30 @@ fun PlayerScreen(
     // حالات تحكم المشغل الأساسية
     var isPlaying by remember { mutableStateOf(true) }
     var currentPosition by remember { mutableLongStateOf(initialPosition) }
-    var totalDuration by remember { mutableLongStateOf(video.duration) }
+    var totalDuration by remember { mutableLongStateOf(currentVideo.duration) }
     var isBuffering by remember { mutableStateOf(true) }
     var showControls by remember { mutableStateOf(true) }
     var isSeeking by remember { mutableStateOf(false) }
     var seekSliderPosition by remember { mutableFloatStateOf(0f) }
+
+    // دالة الانتقال الفوري لفيديو معين بالقائمة مع التحديث والتجهيز والتشغيل التلقائي من البداية
+    val playVideoAtIndex: (Int) -> Unit = { newIndex ->
+        if (newIndex in effectivePlaylist.indices) {
+            currentIndex = newIndex
+            val targetVideo = effectivePlaylist[newIndex]
+            currentVideo = targetVideo
+            onVideoChanged?.invoke(targetVideo)
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
+            exoPlayer.setMediaItem(MediaItem.fromUri(targetVideo.contentUri))
+            exoPlayer.prepare()
+            exoPlayer.seekTo(0L)
+            exoPlayer.play()
+            currentPosition = 0L
+            totalDuration = targetVideo.duration.coerceAtLeast(0L)
+            isPlaying = true
+        }
+    }
 
     // سرعة التشغيل (Playback Speed)
     var currentSpeed by remember { mutableFloatStateOf(1.0f) }
@@ -492,10 +531,14 @@ fun PlayerScreen(
                 if (playbackState == Player.STATE_READY) {
                     totalDuration = exoPlayer.duration.coerceAtLeast(0L)
                 }
-                if (playbackState == Player.STATE_ENDED && sleepAtEndOfVideo) {
-                    exoPlayer.pause()
-                    sleepAtEndOfVideo = false
-                    Toast.makeText(context, "اكتمل تشغيل الفيديو ومؤقت النوم", Toast.LENGTH_SHORT).show()
+                if (playbackState == Player.STATE_ENDED) {
+                    if (sleepAtEndOfVideo) {
+                        exoPlayer.pause()
+                        sleepAtEndOfVideo = false
+                        Toast.makeText(context, "اكتمل تشغيل الفيديو ومؤقت النوم", Toast.LENGTH_SHORT).show()
+                    } else if (currentIndex < effectivePlaylist.size - 1) {
+                        playVideoAtIndex(currentIndex + 1)
+                    }
                 }
             }
         }
@@ -1013,7 +1056,7 @@ fun PlayerScreen(
                         Spacer(modifier = Modifier.width(4.dp))
 
                         Text(
-                            text = video.title,
+                            text = currentVideo.title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
@@ -1260,7 +1303,7 @@ fun PlayerScreen(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        // ب. أزرار التحكم السفلية: Lock -> Previous -> Play/Pause Circle -> Next -> Ratio
+                        // ب. أزرار التحكم السفلية: Lock -> Next -> Play/Pause Circle -> Previous -> Ratio
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1285,23 +1328,20 @@ fun PlayerScreen(
                                 )
                             }
 
-                            // 2. زر الفيديو السابق / إعادة التشغيل من البداية (Previous)
+                            // 2. زر الفيديو التالي (Next - بجانب زر القفل)
                             IconButton(
                                 onClick = {
-                                    if (exoPlayer.currentPosition > 3_000L) {
-                                        exoPlayer.seekTo(0L)
-                                        currentPosition = 0L
+                                    if (currentIndex < effectivePlaylist.size - 1) {
+                                        playVideoAtIndex(currentIndex + 1)
                                     } else {
-                                        val newPos = (exoPlayer.currentPosition - 10_000L).coerceAtLeast(0L)
-                                        exoPlayer.seekTo(newPos)
-                                        currentPosition = newPos
+                                        Toast.makeText(context, "وصلت إلى نهاية قائمة التشغيل", Toast.LENGTH_SHORT).show()
                                     }
                                 },
-                                modifier = Modifier.testTag("player_bottom_prev_button")
+                                modifier = Modifier.testTag("player_bottom_next_button")
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.SkipPrevious,
-                                    contentDescription = "السابق",
+                                    imageVector = Icons.Default.SkipNext,
+                                    contentDescription = "التالي",
                                     tint = Color.White,
                                     modifier = Modifier.size(32.dp)
                                 )
@@ -1331,19 +1371,34 @@ fun PlayerScreen(
                                 )
                             }
 
-                            // 4. زر الفيديو التالي / التقديم السريع (Next)
+                            // 4. زر الفيديو السابق / إعادة التشغيل من البداية (Previous - بجانب زر نسبة العرض)
                             IconButton(
                                 onClick = {
-                                    val maxDuration = exoPlayer.duration.coerceAtLeast(0L)
-                                    val newPos = (exoPlayer.currentPosition + 10_000L).coerceAtMost(maxDuration)
-                                    exoPlayer.seekTo(newPos)
-                                    currentPosition = newPos
+                                    val now = System.currentTimeMillis()
+                                    val isNearBeginning = exoPlayer.currentPosition <= 3_000L
+                                    val isRapidDoublePress = (now - lastPreviousClickTime) < 2_000L
+
+                                    if (isNearBeginning || isRapidDoublePress) {
+                                        // الضغطة الثانية أو إذا كان الفيديو في بدايته بالفعل: الانتقال للفيديو السابق
+                                        if (currentIndex > 0) {
+                                            playVideoAtIndex(currentIndex - 1)
+                                        } else {
+                                            exoPlayer.seekTo(0L)
+                                            currentPosition = 0L
+                                            Toast.makeText(context, "هذا هو أول فيديو في القائمة", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        // الضغطة الأولى: تعيد الفيديو الحالي إلى بدايته (الموضع 0)
+                                        exoPlayer.seekTo(0L)
+                                        currentPosition = 0L
+                                    }
+                                    lastPreviousClickTime = now
                                 },
-                                modifier = Modifier.testTag("player_bottom_next_button")
+                                modifier = Modifier.testTag("player_bottom_prev_button")
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.SkipNext,
-                                    contentDescription = "التالي",
+                                    imageVector = Icons.Default.SkipPrevious,
+                                    contentDescription = "السابق",
                                     tint = Color.White,
                                     modifier = Modifier.size(32.dp)
                                 )
